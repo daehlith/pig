@@ -23,6 +23,6 @@ jobs:
         pip install graphviz pytest
     - name: Test with pytest
       env:
-        PYTOHNPATH: .
+        PYTHONPATH: .
       run: |
         pytest -vv
