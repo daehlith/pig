@@ -10,6 +10,21 @@ MULTIPLE_IMPORTS = """digraph unittest {
 \tunittest -> tempfile
 }"""
 
+MULTIPLE_IMPORT_FROMS = """digraph unittest {
+\tunittest [label=unittest]
+\tunittest -> os
+\tunittest -> sys
+\tunittest -> tempfile
+}"""
+
+MIXED_IMPORTS = """digraph unittest {
+\tunittest [label=unittest]
+\tunittest -> logging
+\tunittest -> os
+\tunittest -> sys
+\tunittest -> tempfile
+}"""
+
 
 @pytest.mark.parametrize(
     "test_input,expected", [
@@ -30,6 +45,16 @@ MULTIPLE_IMPORTS = """digraph unittest {
             "import os; import sys; import tempfile",
             MULTIPLE_IMPORTS,
             id="multiple imports"
+        ),
+        pytest.param(
+            "from os import path; from sys import version; from tempfile import mkstemp",
+            MULTIPLE_IMPORT_FROMS,
+            id="multiple import froms"
+        ),
+        pytest.param(
+            "import logging; from os import path; import sys; from tempfile import mkstemp",
+            MIXED_IMPORTS,
+            id="mixed imports"
         ),
     ]
 )
