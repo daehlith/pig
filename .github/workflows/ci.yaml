@@ -22,5 +22,7 @@ jobs:
         python -m pip install --upgrade pip
         pip install graphviz pytest
     - name: Test with pytest
+      env:
+        PYTOHNPATH: .
       run: |
-        PYTHONPATH=. pytest -vv
+        pytest -vv
