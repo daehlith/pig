@@ -9,6 +9,7 @@ Some caveats to watch out for:
 """
 import argparse
 import ast
+import inspect
 import logging
 import sys
 
@@ -16,56 +17,95 @@ import sys
 from graphviz import Digraph
 
 
-class ImportFinder(ast.NodeVisitor):
+class ImportTracer(ast.NodeVisitor):
     def __init__(self, name):
-        super(ImportFinder, self).__init__()
+        super(ImportTracer, self).__init__()
         self._graph = Digraph(name=name)
         self._graph.node(name, label=name)
         self._root = name
+        self._current = self._root
+        self._visited_modules = {name}
+        self._direct_dependencies = set()
+        self._indirect_dependencies = set()
+        self._cached = False
+        self._edges = set()
 
     @property
     def graph(self):
+        if not self._cached:
+            for dep in sorted(self._direct_dependencies):
+                self._graph.edge(self._root, dep, style="solid")
+            for dep in sorted(self._indirect_dependencies):
+                self._graph.edge(self._root, dep, style="dotted")
+            self._cached = True
         logging.debug(self._graph.source)
         return self._graph
 
     def visit_alias(self, node):
-        for field, value in ast.iter_fields(node):
-            logging.debug("\t%s=%s", field, value)
+        self._log_debug(node)
+
+    def _insert_edge(self, from_node, to_node):
+        if (from_node, to_node) in self._edges:
+            return
+        self._cached = False
+        if from_node != self._root:
+            if to_node not in self._direct_dependencies:
+                self._indirect_dependencies.add(to_node)
+        else:
+            self._indirect_dependencies.discard(to_node)
+            self._direct_dependencies.add(to_node)
 
     def visit_Import(self, node):
+        self._log_debug(node)
         for name in node.names:
-            self._graph.edge(self._root, name.name)
-        # for field, value in ast.iter_fields(node):
-        #     if isinstance(value, ast.AST):
-        #         logging.debug("\t%s", field)
-        #         self.visit(value)
-        #     elif isinstance(value, list):
-        #         logging.debug("\t%s=[", field)
-        #         for item in value:
-        #             if isinstance(item, ast.AST):
-        #                 self.visit(item)
-        #             else:
-        #                 logging.debug("\t\t%s,", item)
-        #         logging.debug("\t]")
-        #     else:
-        #         logging.debug("\t%s=%s", field, value)
+            self._insert_edge(self._current, name.name)
+            self._recurse_imports(name.name)
+
+    def _recurse_imports(self, name):
+        if name in self._visited_modules:
+            return
+        else:
+            _previous = self._current
+            self._current = name
+            self._visited_modules.add(name)
+            try:
+                mod = __import__(name)
+                code = inspect.getsource(mod)
+                imported_node = ast.parse(code, name)
+                logging.debug(ast.dump(imported_node))
+                self.visit(imported_node)
+            except (TypeError, IOError, ImportError, ValueError):
+                logging.warn("Could not get source for %s", name)
+            finally:
+                self._current = _previous
+
+    def _log_debug(self, node):
+        if logging.getLogger().level != logging.DEBUG:
+            return
+        self._indent_level = getattr(self, "_indent_level", 0) + 1
+        for field, value in ast.iter_fields(node):
+            if isinstance(value, ast.AST):
+                logging.debug("%s%s", "\t" * self._indent_level, field)
+                self.visit(value)
+            elif isinstance(value, list):
+                logging.debug("%s%s=[", "\t" * self._indent_level, field)
+                for item in value:
+                    if isinstance(item, ast.AST):
+                        self.visit(item)
+                    else:
+                        logging.debug("%s%s", "\t" * (1+self._indent_level), item)
+                logging.debug("%s]", "\t" * self._indent_level)
+            else:
+                logging.debug("%s%s=%s", "\t" * self._indent_level, field, value)
+        self._indent_level = self._indent_level - 1
 
     def visit_ImportFrom(self, node):
-        self._graph.edge(self._root, node.module)
-        # for field, value in ast.iter_fields(node):
-        #     if isinstance(value, ast.AST):
-        #         logging.debug("\t%s", field)
-        #         self.visit(value)
-        #     elif isinstance(value, list):
-        #         logging.debug("\t%s[", field)
-        #         for item in value:
-        #             if isinstance(item, ast.AST):
-        #                 self.visit(item)
-        #             else:
-        #                 logging.debug("\t\t%s", item)
-        #         logging.debug("\t]")
-        #     else:
-        #         logging.debug("\t%s=%s", field, value)
+        self._log_debug(node)
+        if node.module is None:
+            logging.warn("Empty node.module for %s", self._current)
+            return
+        self._insert_edge(self._current, node.module)
+        self._recurse_imports(node.module)
 
 
 def generate_import_graph(code, filename):
@@ -73,7 +113,7 @@ def generate_import_graph(code, filename):
     """
     node = ast.parse(code, filename=filename)
     logging.debug(ast.dump(node))
-    walker = ImportFinder(filename)
+    walker = ImportTracer(filename)
     walker.visit(node)
     return walker.graph
 
