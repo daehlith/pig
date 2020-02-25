@@ -11,6 +11,7 @@ import argparse
 import ast
 import imp
 import logging
+import os
 import sys
 
 
@@ -73,8 +74,10 @@ class ImportTracer(ast.NodeVisitor):
             try:
                 fp, pathname, description = imp.find_module(name)
                 logging.debug("imp.find_module(%s) returned: %s %s", name, pathname, description)
-                if description[2] in (imp.C_BUILTIN, imp.C_EXTENSION, imp.PKG_DIRECTORY, imp.PY_FROZEN):
+                if description[2] in (imp.C_BUILTIN, imp.C_EXTENSION, imp.PY_FROZEN):
                     return
+                elif description[2] == imp.PKG_DIRECTORY:
+                    fp = open(os.path.join(pathname, "__init__.py"), "r")
                 code = fp.read()
                 imported_node = ast.parse(code, name)
                 logging.debug(ast.dump(imported_node))
