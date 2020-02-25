@@ -9,7 +9,7 @@ Some caveats to watch out for:
 """
 import argparse
 import ast
-import inspect
+import imp
 import logging
 import sys
 
@@ -68,15 +68,23 @@ class ImportTracer(ast.NodeVisitor):
             _previous = self._current
             self._current = name
             self._visited_modules.add(name)
+            fp = None
             try:
-                mod = __import__(name)
-                code = inspect.getsource(mod)
+                fp, pathname, description = imp.find_module(name)
+                logging.debug("imp.find_module(%s) returned: %s %s", name, pathname, description)
+                if description[2] in (imp.C_BUILTIN, imp.C_EXTENSION, imp.PKG_DIRECTORY, imp.PY_FROZEN):
+                    return
+                code = fp.read()
                 imported_node = ast.parse(code, name)
                 logging.debug(ast.dump(imported_node))
                 self.visit(imported_node)
-            except (TypeError, IOError, ImportError, ValueError):
-                logging.warn("Could not get source for %s", name)
+            except ImportError:
+                logging.warn("Failed importing %s, analysis may be incomplete", name)
+            except Exception:
+                logging.exception("Unhandled exception while visiting module %s", name)
             finally:
+                if fp is not None:
+                    fp.close()
                 self._current = _previous
 
     def _log_debug(self, node):
