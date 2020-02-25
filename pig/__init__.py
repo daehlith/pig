@@ -34,7 +34,7 @@ class ImportTracer(ast.NodeVisitor):
     def graph(self):
         if not self._cached:
             for dep in sorted(self._direct_dependencies):
-                self._graph.edge(self._root, dep, style="solid")
+                self._graph.edge(self._root, dep, style="solid", color="blue")
             for dep in sorted(self._indirect_dependencies):
                 self._graph.edge(self._root, dep, style="dotted")
             self._cached = True
@@ -51,6 +51,7 @@ class ImportTracer(ast.NodeVisitor):
         if from_node != self._root:
             if to_node not in self._direct_dependencies:
                 self._indirect_dependencies.add(to_node)
+            self._graph.edge(from_node, to_node)
         else:
             self._indirect_dependencies.discard(to_node)
             self._direct_dependencies.add(to_node)
@@ -129,6 +130,9 @@ def generate_import_graph(code, filename):
 def main():
     parser = argparse.ArgumentParser(description="Create an import graph for the given Python code.")
     parser.add_argument("-v", "--verbose", help="Toggle verbose mode", action="store_true")
+    parser.add_argument(
+        "-o", "--outfile", help="Where to write the dotfile to", default="out.dot", type=argparse.FileType('w')
+    )
     parser.add_argument("script", type=argparse.FileType('r'), help="Script to generate the import graph for")
     options = parser.parse_args()
 
@@ -137,10 +141,16 @@ def main():
     logging.info("Generating import graph for %s", options.script.name)
 
     try:
-        generate_import_graph(options.script.read(), filename=options.script.name)
+        graph = generate_import_graph(options.script.read(), filename=options.script.name)
+        options.outfile.write(graph.source)
     finally:
-        if options.script not in (sys.stdin, sys.stdout, sys.stderr):
-            options.script.close()
+        for fp in (options.script, options.outfile):
+            if fp not in (sys.stdin, sys.stdout, sys.stderr):
+                try:
+                    fp.close()
+                except Exception:
+                    logging.exception("Failed closing %s", fp)
+
 
 
 if __name__ == "__main__":
