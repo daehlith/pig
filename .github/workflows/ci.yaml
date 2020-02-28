@@ -1,6 +1,12 @@
 name: Continuous Integration
 
 on:
+  pull_request:
+    branches:
+      - master
+    paths:
+      - '**.py'
+      - '.github/workflows/**'
   push:
     branches:
       - master
@@ -13,6 +19,7 @@ jobs:
 
     runs-on: ${{ matrix.os }}
     strategy:
+      max-parallel: 2
       matrix:
         python-version: [2.7, 3.8]
         os: [ubuntu-latest, macos-latest, windows-latest]
